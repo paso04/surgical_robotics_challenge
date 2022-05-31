@@ -47,16 +47,40 @@ from ambf_client import Client
 from surgical_robotics_challenge.psm_arm import PSM
 import time
 import rospy
+import numpy as np
 from PyKDL import Frame, Rotation, Vector, Wrench
 from argparse import ArgumentParser
 from input_devices.mtm_device_crtk import MTM
 from itertools import cycle
-from surgical_robotics_challenge.ecm_arm_read_state_only import ECM
+from surgical_robotics_challenge.ecm_arm import ECM
 from surgical_robotics_challenge.utils.jnt_control_gui import JointGUI
-
+from sensor_msgs.msg import Joy
+from geometry_msgs.msg import PoseStamped
+import PyKDL
 
 class ControllerInterface:
     def __init__(self, leader, psm_arms, camera):
+
+        self.camera_pedal = False
+        # self.flag1 = False
+        # self.flag2 = False
+        # # self.MTM1_position = [0,0,0]
+        # # self.MTM2_position = [0,0,0]
+        # self.fps_vector1 = Vector(0,0,0)
+        # self.fps_vector2 = Vector(0,0,0)
+        # self.start_x1 = 0
+        # self.start_y1 = 0
+        # self.start_z1 = 0
+        # self.start_x2 = 0
+        # self.start_y2 = 0
+        # self.start_z2 = 0
+        
+
+        # self.MTM2_sub = rospy.Subscriber("/MTMR/local/measured_cp", PoseStamped, self.MTM2_CB, queue_size=1)
+        # self.MTM1_sub = rospy.Subscriber("/MTML/local/measured_cp", PoseStamped, self.MTM1_CB, queue_size=1)
+        self.cam_sub = rospy.Subscriber("/footpedals/camera", Joy, self.cam_CB, queue_size=1)
+        self.vel_factor = 0.035/3 * input('Please, select a PSM scale factor between 1 and 3: ')
+
         self.counter = 0
         self.leader = leader
         self.psm_arms = cycle(psm_arms)
@@ -70,6 +94,7 @@ class ControllerInterface:
         self.cmd_rpy = None
         self.T_IK = None
         self._camera = camera
+        # self.T_c_w = self._camera.get_T_c_w()
 
         self._T_c_b = None
         self._update_T_c_b = True
@@ -99,7 +124,7 @@ class ControllerInterface:
         else:
             if self.leader.is_active():
                 self.leader.servo_cp(self.leader.pre_coag_pose_msg)
-        twist = self.leader.measured_cv() * 0.02
+        twist = self.leader.measured_cv() * self.vel_factor
         self.cmd_xyz = self.active_psm.T_t_b_home.p
         if not self.leader.clutch_button_pressed:
             delta_t = self._T_c_b.M * twist.vel
@@ -127,12 +152,64 @@ class ControllerInterface:
         #     self.arm.target_FK.set_pos(P_7_0[0], P_7_0[1], P_7_0[2])
         #     self.arm.target_FK.set_rpy(RPY_7_0[0], RPY_7_0[1], RPY_7_0[2])
 
+ ######################################################################################################## CAMERA PEDAL #########################################################################################################
+
+    def cam_CB(self, msg):
+        # print('cam cb')
+        self.camera_pedal = False
+        if msg.buttons[0] == 1:
+            # self.T_c_w = self._camera.get_T_c_w()
+            self.camera_pedal = True
+            # self.flag1 = True
+            # self.flag2 = True
+
+    # def MTM1_CB(self, msg):
+    #     # print("MTM1_CB")
+    #     self.MTM1_position = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z]
+    #     if self.flag1:
+    #         ## SAVE THE STARTING POSITION OF THE MTML --> WILL BE USED TO COMPUTE THE DISPLACEMENT WRT THE STARTING POSITION
+    #         self.start_x1 = msg.pose.position.x
+    #         self.start_y1 = msg.pose.position.y
+    #         self.start_z1 = msg.pose.position.z
+    #         self.flag1 = False
+    #         # print(self.start_x1, self.start_y1, self.start_z1)
+    #     self.fps_vector1 = PyKDL.Vector(msg.pose.position.x - self.start_x1, msg.pose.position.y - self.start_y1, -msg.pose.position.z + self.start_z1)
+    #     # print(self.fps_vector1)
+
+
+    # def MTM2_CB(self, msg):
+    #     # print("MTM2_CB")
+    #     self.MTM2_position = [msg.pose.position.x, msg.pose.position.y, msg.pose.position.z]
+    #     if self.flag2:
+    #         ## SAVE THE STARTING POSITION OF THE MTMR --> WILL BE USED TO COMPUTE THE DISPLACEMENT WRT THE STARTING POSITION
+    #         self.start_x2 = msg.pose.position.x
+    #         self.start_y2 = msg.pose.position.y
+    #         self.start_z2 = msg.pose.position.z
+    #         self.flag2 = False
+    #         print("flag2")
+    #     # print("OUT")
+    #     self.fps_vector2 = PyKDL.Vector(msg.pose.position.x - self.start_x2, msg.pose.position.y - self.start_y2, msg.pose.position.z - self.start_z2)
+
+    # def move_camera(self):
+    #     vector = (self.fps_vector1 + self.fps_vector2) / 2
+    #     # vector = self.fps_vector1
+    #     # print(vector)
+    #     self._camera.servo_cp_cam(PyKDL.Frame(self.T_c_w.M, self.T_c_w.p + vector))
+    #     # self._camera.servo_cv(np.array([0,0,0,0,1.0,0]), 1.0)
+
+
+ ######################################################################################################## CAMERA PEDAL #########################################################################################################
+
     def run(self):
         if self.leader.switch_psm:
             self.switch_psm()
             self.leader.switch_psm = False
         # self.update_camera_pose()
-        self.update_arm_pose()
+        if not self.camera_pedal:
+            self.update_arm_pose()
+        # else:
+        #     self.move_camera()
+
         # self.update_visual_markers()
 
 
@@ -174,6 +251,7 @@ if __name__ == "__main__":
     c.connect()
 
     cam = ECM(c, 'CameraFrame')
+    T_c_w = cam.get_T_c_w()
     time.sleep(0.5)
 
     controllers = []
@@ -219,6 +297,11 @@ if __name__ == "__main__":
 
     else:
         leader = MTM(parsed_args.mtm_name)
+
+        ##############################################per fare la trasformazione in RF da MTM a World #####################################################
+        # leader._T_baseoffset
+        # leader._T_tipoffset
+
         leader.set_base_frame(Frame(Rotation.RPY((3.14 - 0.8) / 2, 0, 0), Vector(0, 0, 0)))
         controller1 = ControllerInterface(leader, psm_arms, cam)
         controllers.append(controller1)

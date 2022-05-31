@@ -113,7 +113,7 @@ def kdl_wrench_to_wrench_msg(kdl_wrench):
     return ws
 
 
-def pose_msg_to_kdl_frame(msg_pose):
+def transform_msg_to_kdl_frame(msg_pose):
     pose = msg_pose.transform
     f = Frame()
     f.p[0] = pose.translation.x
@@ -123,6 +123,20 @@ def pose_msg_to_kdl_frame(msg_pose):
                               pose.rotation.y,
                               pose.rotation.z,
                               pose.rotation.w)
+
+    return f
+
+
+def pose_msg_to_kdl_frame(msg_pose):
+    pose = msg_pose.pose
+    f = Frame()
+    f.p[0] = pose.position.x
+    f.p[1] = pose.position.y
+    f.p[2] = pose.position.z
+    f.M = Rotation.Quaternion(pose.orientation.x,
+                              pose.orientation.y,
+                              pose.orientation.z,
+                              pose.orientation.w)
 
     return f
 
@@ -175,7 +189,7 @@ class MTM:
         self._jf = []
 
         self._pose_sub = rospy.Subscriber(
-            pose_sub_topic_name, TransformStamped, self.pose_cb, queue_size=1)
+            pose_sub_topic_name, PoseStamped, self.pose_cb, queue_size=1)
         self._state_sub = rospy.Subscriber(
             joint_state_sub_topic_name, JointState, self.state_cb, queue_size=1)
         self._gripper_sub = rospy.Subscriber(
@@ -188,7 +202,7 @@ class MTM:
             coag_topic_name, Joy, self.coag_buttons_cb, queue_size=1)
 
         self._pos_pub = rospy.Publisher(
-            pose_pub_topic_name, TransformStamped, queue_size=1)
+            pose_pub_topic_name, PoseStamped, queue_size=1)
         self._wrench_pub = rospy.Publisher(
             wrench_pub_topic_name, WrenchStamped, queue_size=1)
         self._effort_pub = rospy.Publisher(
@@ -310,16 +324,20 @@ class MTM:
         self.coag_button_pressed = msg.buttons[0]
         self.pre_coag_pose_msg = self.cur_pos_msg
 
+    # def operator_present_cb(self, msg):
+    #     self.operator_is_present = msg.buttons[0]
+    #     self.pre_coag_pose_msg = self.cur_pos_msg
+
     def command_force(self, force):
         pass
 
     def servo_cp(self, pose):
         if type(pose) == PyKDL.Frame:
-            transform_msg = kdl_frame_to_transform_msg(pose)
+            transform_msg = kdl_frame_to_pose_msg(pose)
         elif type(pose) == PoseStamped:
-            transform_msg = pose_stamped_to_transform_stamped(pose)
-        elif type(pose) == TransformStamped:
             transform_msg = pose
+        # elif type(pose) == TransformStamped:
+        #     transform_msg = pose
         else:
             raise TypeError
 

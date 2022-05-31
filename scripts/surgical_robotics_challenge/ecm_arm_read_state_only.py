@@ -45,15 +45,21 @@
 from surgical_robotics_challenge.kinematics.ecmFK import *
 from surgical_robotics_challenge.utils.utilities import cartesian_interpolate_step
 from PyKDL import Frame, Rotation, Vector, Twist
+from ambf_msgs.msg import RigidBodyState
 import time
 from threading import Thread
+import rospy
 
 
 class ECM:
     def __init__(self, client, name):
         self.client = client
         self.name = name
-        self.camera_handle = self.client.get_obj_handle(name)
+        self.camera_state_sub = rospy.Subscriber('/ambf/env/CameraFrame/State',
+         RigidBodyState, self.cam_state_cb, queue_size=1)
+        # self.camera_command_pub = rospy.Subscriber('/ambf/env/CameraFrame/Command')
+        # self.camera_handle = self.client.get_obj_handle(name)
+        self.camera_handle = None
         time.sleep(0.1)
 
         # Transform of Camera in World
@@ -71,6 +77,10 @@ class ECM:
         self._T_c_w_cmd = None
         self._force_exit_thread = False
         self._thread_busy = False
+        self._cam_state = RigidBodyState()
+
+    def cam_state_cb(self, msg):
+        self._cam_state = msg
 
     def _interpolate(self):
         self._thread_busy = True
@@ -98,10 +108,7 @@ class ECM:
         self._thread_busy = False
 
     def is_present(self):
-        if self.camera_handle is None:
-            return False
-        else:
-            return True
+        return True
 
     def get_T_c_w(self):
         self._update_camera_pose()
@@ -118,8 +125,8 @@ class ECM:
         self._pose_changed = True
 
     def _update_camera_pose(self):
-        p = self.camera_handle.get_pos()
-        q = self.camera_handle.get_rot()
+        p = self._cam_state.pose.position
+        q = self._cam_state.pose.orientation
         P_c_w = Vector(p.x, p.y, p.z)
         R_c_w = Rotation.Quaternion(q.x, q.y, q.z, q.w)
         self._T_c_w = Frame(R_c_w, P_c_w)

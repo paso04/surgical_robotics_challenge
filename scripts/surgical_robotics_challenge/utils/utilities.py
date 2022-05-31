@@ -129,7 +129,7 @@ def get_boolean_from_opt(opt):
         print("Error: Option is invalid: ", opt)
         raise ValueError
 
-def cartesian_interpolate_step(T_curr, T_goal, max_delta=0.01, deadband=0.01):
+def cartesian_interpolate_step(T_curr, T_goal, max_delta=0.005, deadband=0.01):
     error = np.zeros(6)
     pe = T_goal.p - T_curr.p
     re = (T_curr.M.Inverse() * T_goal.M).GetRPY()
